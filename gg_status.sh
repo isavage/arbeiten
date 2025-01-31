@@ -213,8 +213,8 @@ EOF
         echo \"\$process_list\"
         echo \"---BEGIN_POSITIONS---\"
         
-        # Get position for each process
-        while read -r line; do
+               # Get position for each process
+        echo \"\$process_list\" | while read -r line; do
             if echo \"\$line\" | grep -q \"^EXTRACT\\|^REPLICAT\"; then
                 process_type=\$(echo \"\$line\" | awk '{print \$1}')
                 process_name=\$(echo \"\$line\" | awk '{print \$3}')
@@ -226,7 +226,7 @@ EOF
                 echo \"---PROCESS_\${process_name}---\"
                 echo \"\$position_output\"
             fi
-        done <<< \"\$process_list\"
+        done
     " | while IFS= read -r line; do
         case "$line" in
             "---BEGIN_PROCESS_LIST---")
