@@ -222,7 +222,6 @@ EOF
             rba_status="Moving"
             if [[ ! -z "$prev_rba" && "$current_rba" == "$prev_rba" ]]; then
                 rba_status="Not Moving"
-                status_class="status-orange"
             fi
             
             # Determine status color
