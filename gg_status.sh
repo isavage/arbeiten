@@ -7,9 +7,6 @@ SERVERS=(
     "server3"
 )
 
-# GoldenGate home directory
-GG_HOME="/oracle/app/goldengate"
-
 # File to store previous RBA values
 RBA_FILE="/tmp/gg_rba_values.txt"
 
@@ -85,7 +82,16 @@ check_gg_status() {
 
     # SSH to server and execute commands
     ssh oracle@${server} "
-        cd ${GG_HOME}
+        # Source profile to get OGG_HOME
+        source ~/.bash_profile
+        
+        # Verify OGG_HOME exists
+        if [ -z \"\$OGG_HOME\" ]; then
+            echo \"Error: OGG_HOME not set on ${server}\"
+            exit 1
+        fi
+        
+        cd \$OGG_HOME || exit 1
         
         # Get current timestamp
         timestamp=\$(date '+%Y-%m-%d %H:%M:%S')
@@ -106,6 +112,15 @@ EOF
         
         echo \"\$status_output\"
     " | while IFS= read -r line; do
+        if [[ $line =~ ^Error: ]]; then
+            # Write error message to HTML
+            echo "<tr class=\"status-red\">" >> ${HTML_REPORT}
+            echo "<td>${server}</td>" >> ${HTML_REPORT}
+            echo "<td colspan=\"5\">$line</td>" >> ${HTML_REPORT}
+            echo "</tr>" >> ${HTML_REPORT}
+            continue
+        fi
+        
         if [[ $line =~ EXTRACT|REPLICAT ]]; then
             process_name=$(echo $line | awk '{print $2}')
             status=$(echo $line | awk '{print $3}')
