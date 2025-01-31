@@ -182,13 +182,16 @@ check_gg_status() {
     
     # Get previous positions
     if [ -f ${RBA_FILE} ]; then
-        prev_data=$(grep "|${server}|" ${RBA_FILE} | tail -n 1)
-        # Parse previous positions into array
-        while IFS='|' read -r _ _ process_data; do
-            while read -r proc pos; do
-                prev_positions[$proc]=$pos
-            done <<< "$process_data"
-        done <<< "$prev_data"
+        while IFS='|' read -r timestamp srv data; do
+            if [[ "$srv" == "$server" ]]; then
+                # Parse space-separated process:position pairs
+                for pair in $data; do
+                    if [[ "$pair" =~ ^([^:]+):(.+)$ ]]; then
+                        prev_positions[${BASH_REMATCH[1]}]=${BASH_REMATCH[2]}
+                    fi
+                done
+            fi
+        done < ${RBA_FILE}
     fi
 
     ssh oracle@${server} "
@@ -293,11 +296,12 @@ EOF
             position_output+="$line"$'\n'
         fi
     done
-    
-    # Store current positions for next run
-    positions_data=""
+
+
+# Store current positions for next run
+ positions_data=""
     for proc in "${!current_positions[@]}"; do
-        positions_data+="$proc ${current_positions[$proc]} "
+        positions_data+="${proc}:${current_positions[$proc]} "
     done
     echo "$(date '+%Y-%m-%d %H:%M:%S')|${server}|${positions_data}" >> ${RBA_FILE}
 }
