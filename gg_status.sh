@@ -13,6 +13,16 @@ RBA_FILE="/tmp/gg_rba_values.txt"
 # HTML report location
 HTML_REPORT="/var/www/html/gg_status.html"
 
+# Function to extract lag value
+get_lag_value() {
+    echo "$1" | awk -F'LAG' '{print $2}' | awk -F',' '{print $1}' | awk '{print $1}'
+}
+
+# Function to extract checkpoint lag value
+get_checkpoint_lag() {
+    echo "$1" | awk -F'CHKPT' '{print $2}' | awk -F',' '{print $1}' | awk '{print $1}'
+}
+
 # Function to generate HTML header
 generate_html_header() {
     cat > ${HTML_REPORT} << EOF
