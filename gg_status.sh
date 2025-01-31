@@ -44,10 +44,9 @@ generate_html_header() {
             padding: 5px;
         }
         .server-table {
-            width: 100%;
             border-collapse: collapse;
             margin-bottom: 15px;
-            table-layout: fixed;
+            width: auto;
         }
         .server-table th, .server-table td {
             border: 1px solid #ddd;
@@ -77,6 +76,11 @@ generate_html_header() {
             line-height: 18px;
             border-bottom: 2px solid #ddd;
         }
+        .col-process { min-width: 60px; }
+        .col-status { min-width: 70px; }
+        .col-lag { min-width: 65px; }
+        .col-chkpt { min-width: 65px; }
+        .col-rba { min-width: 60px; }
         .status-red {
             color: #ff0000;
             font-weight: bold;
@@ -127,17 +131,13 @@ generate_server_table_header() {
     cat >> ${HTML_REPORT} << EOF
 <td class="outer-td">
 <table class="server-table">
-    <tr class="server-header">
-        <td colspan="5" style="text-align: center !important; padding: 2px 4px;">
-            <div style="width: 100%; text-align: center;">$server</div>
-        </td>
-    </tr>
+    <tr class="server-header"><td colspan="5">$server</td></tr>
     <tr>
-        <th>Process</th>
-        <th>Status</th>
-        <th>Lag</th>
-        <th>Chkpt Lag</th>
-        <th>RBA</th>
+        <th class="col-process">Process</th>
+        <th class="col-status">Status</th>
+        <th class="col-lag">Lag</th>
+        <th class="col-chkpt">Chkpt Lag</th>
+        <th class="col-rba">RBA</th>
     </tr>
 EOF
 }
@@ -252,13 +252,13 @@ EOF
             : ${lag:=00:00:00}
             : ${checkpoint_lag:=00:00:00}
 
-            # Write to HTML
+            # Write to HTML with column classes
             echo "<tr>" >> ${HTML_REPORT}
-            echo "<td>${process_name}</td>" >> ${HTML_REPORT}
-            echo "<td class=\"${status_class}\">${status}</td>" >> ${HTML_REPORT}
-            echo "<td>${lag}</td>" >> ${HTML_REPORT}
-            echo "<td>${checkpoint_lag}</td>" >> ${HTML_REPORT}
-            echo "<td class=\"${status_class}\">${rba_status}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-process\">${process_name}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-status ${status_class}\">${status}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-lag\">${lag}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-chkpt\">${checkpoint_lag}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-rba ${status_class}\">${rba_status}</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
         fi
     done
