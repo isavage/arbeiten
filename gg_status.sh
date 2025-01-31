@@ -47,27 +47,34 @@ generate_html_header() {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 15px;
+            table-layout: fixed;
         }
         .server-table th, .server-table td {
             border: 1px solid #ddd;
-            padding: 3px 4px;
+            padding: 1px 4px;
             text-align: left;
-            line-height: 1;
+            line-height: 12px;
             vertical-align: middle;
-            height: auto;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .server-table th {
             background-color: #000000;
             color: white;
+            font-weight: normal;
+            padding: 2px 4px;
         }
-        .server-header {
+        .server-header td {
             background-color: white;
             color: black;
             font-weight: bold;
-            text-align: center;
-            padding: 3px 4px;
+            text-align: center !important;
+            padding: 2px 4px;
             border-bottom: 2px solid #ddd;
+        }
+        .server-table tr {
+            height: 16px;
         }
         .status-red {
             color: #ff0000;
@@ -119,7 +126,11 @@ generate_server_table_header() {
     cat >> ${HTML_REPORT} << EOF
 <td class="outer-td">
 <table class="server-table">
-    <tr><td colspan="5" class="server-header">$server</td></tr>
+    <tr class="server-header">
+        <td colspan="5" style="text-align: center !important; padding: 2px 4px;">
+            <div style="width: 100%; text-align: center;">$server</div>
+        </td>
+    </tr>
     <tr>
         <th>Process</th>
         <th>Status</th>
