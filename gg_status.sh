@@ -48,11 +48,12 @@ generate_html_header() {
         }
         th, td {
             border: 1px solid #ddd;
-            padding: 8px;
+            padding: 4px 8px;  /* Reduced padding to minimize row height */
             text-align: left;
+            line-height: 1.2;  /* Reduced line height */
         }
         th {
-            background-color: #4CAF50;
+            background-color: #000000;
             color: white;
         }
         tr:nth-child(even) {
@@ -72,7 +73,13 @@ generate_html_header() {
         }
         .header {
             text-align: center;
-            padding: 20px;
+            padding: 10px;
+        }
+        .server-header {
+            background-color: #4a4a4a;
+            color: white;
+            font-weight: bold;
+            text-align: left;
         }
     </style>
 </head>
@@ -83,7 +90,6 @@ generate_html_header() {
     </div>
     <table>
         <tr>
-            <th>Server</th>
             <th>Process Name</th>
             <th>Status</th>
             <th>Lag</th>
@@ -96,12 +102,16 @@ EOF
 # Function to check GoldenGate status and generate HTML
 check_gg_status() {
     local server=$1
+    local first_process=true
     
     # Get previous RBA values
     local prev_rba=""
     if [ -f ${RBA_FILE} ]; then
         prev_rba=$(grep "|${server}|" ${RBA_FILE} | tail -n 1)
     fi
+    
+    # Add server header before processing the server's entries
+    echo "<tr><td colspan=\"5\" class=\"server-header\">${server}</td></tr>" >> ${HTML_REPORT}
 
     # SSH to server and execute commands
    ssh oracle@${server} "
@@ -159,11 +169,10 @@ EOF
         
         echo \"Using OGG_HOME: \$OGG_HOME\"
         echo \"\$status_output\"
-     " | while IFS= read -r line; do
+   " | while IFS= read -r line; do
         if [[ $line =~ ^Error: ]]; then
-            echo "<tr class=\"status-red\">" >> ${HTML_REPORT}
-            echo "<td>${server}</td>" >> ${HTML_REPORT}
-            echo "<td colspan=\"5\">$line</td>" >> ${HTML_REPORT}
+            echo "<tr>" >> ${HTML_REPORT}
+            echo "<td colspan=\"5\" class=\"status-red\">$line</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
             continue
         fi
@@ -184,7 +193,6 @@ EOF
             # Convert lag to minutes for comparison (format is HH:MM:SS)
             lag_minutes=0
             if [[ $lag =~ ([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
-                # Use 10# prefix to force base-10 interpretation
                 hours=$((10#${BASH_REMATCH[1]}))
                 minutes=$((10#${BASH_REMATCH[2]}))
                 seconds=$((10#${BASH_REMATCH[3]}))
@@ -212,7 +220,6 @@ EOF
             
             # Write to HTML
             echo "<tr>" >> ${HTML_REPORT}
-            echo "<td>${server}</td>" >> ${HTML_REPORT}
             echo "<td>${process_name}</td>" >> ${HTML_REPORT}
             echo "<td class=\"${status_class}\">${status}</td>" >> ${HTML_REPORT}
             echo "<td>${lag}</td>" >> ${HTML_REPORT}
