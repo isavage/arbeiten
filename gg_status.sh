@@ -59,13 +59,16 @@ generate_html_header() {
             background-color: #f2f2f2;
         }
         .status-red {
-            background-color: #ff6666;
+            color: #ff0000;
+            font-weight: bold;
         }
         .status-orange {
-            background-color: #ffb366;
+            color: #ff8c00;
+            font-weight: bold;
         }
         .status-green {
-            background-color: #90EE90;
+            color: #008000;
+            font-weight: bold;
         }
         .header {
             text-align: center;
