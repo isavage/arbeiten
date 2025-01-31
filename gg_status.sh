@@ -183,11 +183,13 @@ check_gg_status() {
     # Get previous positions
     if [ -f ${RBA_FILE} ]; then
         while IFS='|' read -r timestamp srv data; do
-            if [[ "$srv" == "$server" ]]; then
+            if [ "$srv" = "$server" ]; then
                 # Parse space-separated process:position pairs
                 for pair in $data; do
-                    if [[ "$pair" =~ ^([^:]+):(.+)$ ]]; then
-                        prev_positions[${BASH_REMATCH[1]}]=${BASH_REMATCH[2]}
+                    proc=$(echo "$pair" | cut -d: -f1)
+                    pos=$(echo "$pair" | cut -d: -f2)
+                    if [ ! -z "$proc" ] && [ ! -z "$pos" ]; then
+                        prev_positions[$proc]=$pos
                     fi
                 done
             fi
@@ -224,7 +226,7 @@ EOF
         
         # Get position for each process
         while read -r line; do
-            if [[ \$line =~ ^(EXTRACT|REPLICAT) ]]; then
+            if echo \"\$line\" | grep -q \"^EXTRACT\\|^REPLICAT\"; then
                 process_type=\$(echo \"\$line\" | awk '{print \$1}')
                 process_name=\$(echo \"\$line\" | awk '{print \$3}')
                 
@@ -237,28 +239,28 @@ EOF
             fi
         done <<< \"\$process_list\"
     " | while IFS= read -r line; do
-        if [[ $line == "---BEGIN_PROCESS_LIST---" ]]; then
+        if [ "$line" = "---BEGIN_PROCESS_LIST---" ]; then
             reading_processes=1
             reading_positions=0
             continue
-        elif [[ $line == "---BEGIN_POSITIONS---" ]]; then
+        elif [ "$line" = "---BEGIN_POSITIONS---" ]; then
             reading_processes=0
             reading_positions=1
             current_process=""
             position_output=""
             continue
-        elif [[ $line =~ ^---PROCESS_(.*)--- ]]; then
+        elif echo "$line" | grep -q "^---PROCESS_.*---"; then
             # Store position for previous process if exists
-            if [[ ! -z "$current_process" && ! -z "$position_output" ]]; then
+            if [ ! -z "$current_process" ] && [ ! -z "$position_output" ]; then
                 current_positions[$current_process]=$(get_process_position "$current_process" "${process_types[$current_process]}" "$position_output")
             fi
-            current_process="${BASH_REMATCH[1]}"
+            current_process=$(echo "$line" | sed 's/^---PROCESS_\(.*\)---$/\1/')
             position_output=""
             continue
         fi
 
         # Collect process information
-        if [[ $reading_processes -eq 1 && $line =~ ^(EXTRACT|REPLICAT) ]]; then
+        if [ $reading_processes -eq 1 ] && echo "$line" | grep -q "^EXTRACT\|^REPLICAT"; then
             process_type=$(echo "$line" | awk '{print $1}')
             status=$(echo "$line" | awk '{print $2}')
             process_name=$(echo "$line" | awk '{print $3}')
@@ -270,11 +272,19 @@ EOF
             
             # Convert lag to minutes for comparison (format is HH:MM:SS)
             lag_minutes=0
-            if [[ $lag =~ ([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
-                hours=$((10#${BASH_REMATCH[1]}))
-                minutes=$((10#${BASH_REMATCH[2]}))
-                seconds=$((10#${BASH_REMATCH[3]}))
-                lag_minutes=$((hours * 60 + minutes + (seconds >= 30 ? 1 : 0)))
+            if echo "$lag" | grep -q "^[0-9][0-9]:[0-9][0-9]:[0-9][0-9]$"; then
+                hours=$(echo "$lag" | cut -d: -f1)
+                minutes=$(echo "$lag" | cut -d: -f2)
+                seconds=$(echo "$lag" | cut -d: -f3)
+                lag_minutes=$((10#$hours * 60 + 10#$minutes + (10#$seconds >= 30 ? 1 : 0)))
+            fi
+            
+            # Determine status color
+            status_class="status-green"
+            if [ "$status" != "RUNNING" ]; then
+                status_class="status-red"
+            elif [ $lag_minutes -gt 10 ]; then
+                status_class="status-orange"
             fi
             
             # Set default values without quotes
@@ -284,22 +294,21 @@ EOF
             # Write to HTML with column classes
             echo "<tr>" >> ${HTML_REPORT}
             echo "<td class=\"col-process\">${process_name}</td>" >> ${HTML_REPORT}
-            echo "<td class=\"col-status\">${status}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-status ${status_class}\">${status}</td>" >> ${HTML_REPORT}
             echo "<td class=\"col-lag\">${lag}</td>" >> ${HTML_REPORT}
             echo "<td class=\"col-chkpt\">${checkpoint_lag}</td>" >> ${HTML_REPORT}
-            echo "<td class=\"col-rba\">Moving</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-rba ${status_class}\">Moving</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
         fi
         
         # Collect position output
-        if [[ $reading_positions -eq 1 && ! -z "$current_process" ]]; then
+        if [ $reading_positions -eq 1 ] && [ ! -z "$current_process" ]; then
             position_output+="$line"$'\n'
         fi
     done
-
-
-# Store current positions for next run
- positions_data=""
+    
+    # Store current positions for next run
+    positions_data=""
     for proc in "${!current_positions[@]}"; do
         positions_data+="${proc}:${current_positions[$proc]} "
     done
