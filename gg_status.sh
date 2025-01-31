@@ -183,10 +183,11 @@ EOF
             
             # Convert lag to minutes for comparison (format is HH:MM:SS)
             lag_minutes=0
-            if [[ $lag =~ ([0-9]+):([0-9]+):([0-9]+) ]]; then
-                hours=${BASH_REMATCH[1]}
-                minutes=${BASH_REMATCH[2]}
-                seconds=${BASH_REMATCH[3]}
+            if [[ $lag =~ ([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
+                # Use 10# prefix to force base-10 interpretation
+                hours=$((10#${BASH_REMATCH[1]}))
+                minutes=$((10#${BASH_REMATCH[2]}))
+                seconds=$((10#${BASH_REMATCH[3]}))
                 lag_minutes=$((hours * 60 + minutes + (seconds >= 30 ? 1 : 0)))
             fi
             
@@ -210,13 +211,13 @@ EOF
             : ${checkpoint_lag:=00:00:00}
             
             # Write to HTML
-            echo "<tr class=\"${status_class}\">" >> ${HTML_REPORT}
+            echo "<tr>" >> ${HTML_REPORT}
             echo "<td>${server}</td>" >> ${HTML_REPORT}
             echo "<td>${process_name}</td>" >> ${HTML_REPORT}
-            echo "<td>${status}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"${status_class}\">${status}</td>" >> ${HTML_REPORT}
             echo "<td>${lag}</td>" >> ${HTML_REPORT}
             echo "<td>${checkpoint_lag}</td>" >> ${HTML_REPORT}
-            echo "<td>${rba_status}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"${status_class}\">${rba_status}</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
         fi
     done
