@@ -51,30 +51,31 @@ generate_html_header() {
         }
         .server-table th, .server-table td {
             border: 1px solid #ddd;
-            padding: 1px 4px;
+            padding: 0 4px;
             text-align: left;
-            line-height: 12px;
+            line-height: 14px;
+            height: 14px;
             vertical-align: middle;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            box-sizing: border-box;
         }
         .server-table th {
             background-color: #000000;
             color: white;
             font-weight: normal;
-            padding: 2px 4px;
+            height: 16px;
+            line-height: 16px;
         }
         .server-header td {
             background-color: white;
             color: black;
             font-weight: bold;
             text-align: center !important;
-            padding: 2px 4px;
+            height: 18px;
+            line-height: 18px;
             border-bottom: 2px solid #ddd;
-        }
-        .server-table tr {
-            height: 16px;
         }
         .status-red {
             color: #ff0000;
