@@ -1,24 +1,23 @@
 #!/bin/bash
 
-MAILTO=
-
 # Two separate server lists
 LIST1=(
     "server1"
     "server2"
+    "server3"
 )
 
 LIST2=(
-    "server1"
-    "server2"
+    "server4"
+    "server5"
+    "server6"
 )
 
 # File to store previous RBA values
-RBA_FILE="gg_rba_values.txt"
+RBA_FILE="/tmp/gg_rba_values.txt"
 
 # HTML report location
-HTML_REPORT="gg_status.html"
-
+HTML_REPORT="/var/www/html/gg_status.html"
 
 # Function to generate HTML header
 generate_html_header() {
@@ -29,8 +28,6 @@ generate_html_header() {
     <title>GoldenGate Status Report</title>
     <style>
         body {
-            margin: 0;
-            padding: 10px;
             font-family: Arial, sans-serif;
             font-size: 12px;
         }
@@ -41,25 +38,18 @@ generate_html_header() {
         .outer-td {
             width: 50%;
             vertical-align: top;
-            padding: 5px;
         }
         .server-table {
-            width: 100%;
             border-collapse: collapse;
-            margin-bottom: 15px;
-            table-layout: fixed;
+            width: auto;
         }
         .server-table th, .server-table td {
             border: 1px solid #ddd;
-            padding: 0 4px;
             text-align: left;
             line-height: 14px;
             height: 14px;
             vertical-align: middle;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            box-sizing: border-box;
         }
         .server-table th {
             background-color: #000000;
@@ -67,6 +57,7 @@ generate_html_header() {
             font-weight: normal;
             height: 16px;
             line-height: 16px;
+            padding: 0 4px;
         }
         .server-header td {
             background-color: white;
@@ -76,30 +67,24 @@ generate_html_header() {
             height: 18px;
             line-height: 18px;
             border-bottom: 2px solid #ddd;
+            padding: 0 4px;
         }
-        .status-red {
-            color: #ff0000;
-            font-weight: bold;
+        .server-table td {
+            padding: 0 4px;
         }
-        .status-orange {
-            color: #ff8c00;
-            font-weight: bold;
-        }
-        .status-green {
-            color: #008000;
-            font-weight: bold;
-        }
+        .col-process { min-width: 60px; }
+        .col-status { min-width: 70px; }
+        .col-lag { min-width: 65px; }
+        .col-chkpt { min-width: 65px; }
+        .col-rba { min-width: 60px; }
+        .status-red { color: #ff0000; font-weight: bold; }
+        .status-orange { color: #ff8c00; font-weight: bold; }
+        .status-green { color: #008000; font-weight: bold; }
         .header {
             text-align: center;
-            padding: 5px;
-            margin-bottom: 10px;
         }
-        .header h2 {
-            margin: 0 0 5px 0;
-        }
-        .header p {
-            margin: 0;
-        }
+        .header h2 { margin: 0; }
+        .header p { margin: 0; }
     </style>
 </head>
 <body>
@@ -127,17 +112,13 @@ generate_server_table_header() {
     cat >> ${HTML_REPORT} << EOF
 <td class="outer-td">
 <table class="server-table">
-    <tr class="server-header">
-        <td colspan="5" style="text-align: center !important; padding: 2px 4px;">
-            <div style="width: 100%; text-align: center;">$server</div>
-        </td>
-    </tr>
+    <tr class="server-header"><td colspan="5">$server</td></tr>
     <tr>
-        <th>Process</th>
-        <th>Status</th>
-        <th>Lag</th>
-        <th>Chkpt Lag</th>
-        <th>RBA</th>
+        <th class="col-process">Process</th>
+        <th class="col-status">Status</th>
+        <th class="col-lag">Lag</th>
+        <th class="col-chkpt">Chkpt Lag</th>
+        <th class="col-rba">RBA</th>
     </tr>
 EOF
 }
@@ -151,7 +132,7 @@ end_server_table() {
 get_lag_value() {
     local line="$1"
     echo "$line" | awk '{
-        if (NF >= 5) {
+        if (NF >= 4) {
             print $4
         }
     }'
@@ -161,69 +142,127 @@ get_lag_value() {
 get_checkpoint_lag() {
     local line="$1"
     echo "$line" | awk '{
-        if (NF >= 6) {
+        if (NF >= 5) {
             print $5
         }
     }'
 }
 
+# Function to get RBA/SCN for a process
+get_process_position() {
+    local process_name="$1"
+    local process_type="$2"
+    local position_output="$3"
+    local position=""
+    
+    if [[ "$process_type" == "EXTRACT" ]]; then
+        # First try to get SCN format (for regular extracts)
+        position=$(echo "$position_output" | grep "SCN" | grep -o "([0-9]*)" | tr -d '()')
+        
+        # If SCN not found, try RBA format (for pumps)
+        if [[ -z "$position" ]]; then
+            position=$(echo "$position_output" | grep "RBA" | awk '{print $NF}')
+        fi
+    else
+        # For replicat, get number after "RBA"
+        position=$(echo "$position_output" | grep "RBA" | awk '{print $NF}')
+    fi
+    
+    echo "$position"
+}
 
 # Function to check GoldenGate status and generate HTML
 check_gg_status() {
     local server=$1
-
-    # Get previous RBA values
-    local prev_rba=""
+    declare -A current_positions
+    declare -A prev_positions
+    declare -A process_types
+    
+    # Get previous positions
     if [ -f ${RBA_FILE} ]; then
-        prev_rba=$(grep "|${server}|" ${RBA_FILE} | tail -n 1)
+        prev_data=$(grep "|${server}|" ${RBA_FILE} | tail -n 1)
+        # Parse previous positions into array
+        while IFS='|' read -r _ _ process_data; do
+            while read -r proc pos; do
+                prev_positions[$proc]=$pos
+            done <<< "$process_data"
+        done <<< "$prev_data"
     fi
 
-    # SSH to server and execute commands
-  ssh ${server} "
+    ssh oracle@${server} "
+        # Source profile to get OGG_HOME
+        if [ -f ~/.bash_profile ]; then
+            . ~/.bash_profile
+        elif [ -f ~/.profile ]; then
             . ~/.profile
-
-# Verify OGG_HOME exists and is valid
+        elif [ -f ~/.bashrc ]; then
+            . ~/.bashrc
+        fi
+        
+        # Verify OGG_HOME exists and is valid
         if [ -z \"\$OGG_HOME\" ] || [ ! -f \"\$OGG_HOME/ggsci\" ]; then
             echo \"Error: Cannot find valid OGG_HOME on ${server}\"
             exit 1
         fi
-
+        
         cd \$OGG_HOME || exit 1
-
-        # Get current timestamp
-        timestamp=\$(date '+%Y-%m-%d %H:%M:%S')
-
-        # Get status
-        status_output=\$(./ggsci << EOF
+        
+        # Get list of processes first
+        process_list=\$(./ggsci << EOF
         info all
 EOF
         )
-
-        # Get current RBA values
-        current_rba=\$(./ggsci << EOF
-        info extract * showch
+        
+        echo \"---BEGIN_PROCESS_LIST---\"
+        echo \"\$process_list\"
+        echo \"---BEGIN_POSITIONS---\"
+        
+        # Get position for each process
+        while read -r line; do
+            if [[ \$line =~ ^(EXTRACT|REPLICAT) ]]; then
+                process_type=\$(echo \"\$line\" | awk '{print \$1}')
+                process_name=\$(echo \"\$line\" | awk '{print \$3}')
+                
+                position_output=\$(./ggsci << EOF
+                info \${process_type} \${process_name}
 EOF
-        )
-
-        echo \"\$timestamp|\$server|\$current_rba\" >> ${RBA_FILE}
-
-        echo \"\$status_output\"
+                )
+                echo \"---PROCESS_\${process_name}---\"
+                echo \"\$position_output\"
+            fi
+        done <<< \"\$process_list\"
     " | while IFS= read -r line; do
-        if [[ $line =~ ^Error: ]]; then
-            echo "<tr>" >> ${HTML_REPORT}
-            echo "<td colspan=\"5\" class=\"status-red\">$line</td>" >> ${HTML_REPORT}
-            echo "</tr>" >> ${HTML_REPORT}
+        if [[ $line == "---BEGIN_PROCESS_LIST---" ]]; then
+            reading_processes=1
+            reading_positions=0
+            continue
+        elif [[ $line == "---BEGIN_POSITIONS---" ]]; then
+            reading_processes=0
+            reading_positions=1
+            current_process=""
+            position_output=""
+            continue
+        elif [[ $line =~ ^---PROCESS_(.*)--- ]]; then
+            # Store position for previous process if exists
+            if [[ ! -z "$current_process" && ! -z "$position_output" ]]; then
+                current_positions[$current_process]=$(get_process_position "$current_process" "${process_types[$current_process]}" "$position_output")
+            fi
+            current_process="${BASH_REMATCH[1]}"
+            position_output=""
             continue
         fi
 
-        # Process only EXTRACT and REPLICAT lines
-        if [[ $line =~ ^(EXTRACT|REPLICAT) ]]; then
+        # Collect process information
+        if [[ $reading_processes -eq 1 && $line =~ ^(EXTRACT|REPLICAT) ]]; then
             process_type=$(echo "$line" | awk '{print $1}')
             status=$(echo "$line" | awk '{print $2}')
             process_name=$(echo "$line" | awk '{print $3}')
             lag=$(get_lag_value "$line")
             checkpoint_lag=$(get_checkpoint_lag "$line")
-
+            
+            # Store process type for position extraction
+            process_types[$process_name]=$process_type
+            
             # Convert lag to minutes for comparison (format is HH:MM:SS)
             lag_minutes=0
             if [[ $lag =~ ([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
@@ -232,46 +271,33 @@ EOF
                 seconds=$((10#${BASH_REMATCH[3]}))
                 lag_minutes=$((hours * 60 + minutes + (seconds >= 30 ? 1 : 0)))
             fi
-
-            # Calculate RBA movement
-            rba_status="Moving"
-            if [[ ! -z "$prev_rba" && "$current_rba" == "$prev_rba" ]]; then
-                rba_status="Not Moving"
-            fi
             
-            # Determine status color
-            status_class="status-green"
-            if [[ "$status" != "RUNNING" ]]; then
-                status_class="status-red"
-            elif [[ $lag_minutes -gt 10 || "$rba_status" == "Not Moving" ]]; then
-                status_class="status-orange"
-            fi
-
-
             # Set default values without quotes
             : ${lag:=00:00:00}
             : ${checkpoint_lag:=00:00:00}
-
-            # Write to HTML
+            
+            # Write to HTML with column classes
             echo "<tr>" >> ${HTML_REPORT}
-            echo "<td>${process_name}</td>" >> ${HTML_REPORT}
-            echo "<td class=\"${status_class}\">${status}</td>" >> ${HTML_REPORT}
-            echo "<td>${lag}</td>" >> ${HTML_REPORT}
-            echo "<td>${checkpoint_lag}</td>" >> ${HTML_REPORT}
-            echo "<td class=\"${status_class}\">${rba_status}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-process\">${process_name}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-status\">${status}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-lag\">${lag}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-chkpt\">${checkpoint_lag}</td>" >> ${HTML_REPORT}
+            echo "<td class=\"col-rba\">Moving</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
         fi
+        
+        # Collect position output
+        if [[ $reading_positions -eq 1 && ! -z "$current_process" ]]; then
+            position_output+="$line"$'\n'
+        fi
     done
-}
-
-
-# Generate HTML footer
-generate_html_footer() {
-    cat >> ${HTML_REPORT} << EOF
-    </table>
-</body>
-</html>
-EOF
+    
+    # Store current positions for next run
+    positions_data=""
+    for proc in "${!current_positions[@]}"; do
+        positions_data+="$proc ${current_positions[$proc]} "
+    done
+    echo "$(date '+%Y-%m-%d %H:%M:%S')|${server}|${positions_data}" >> ${RBA_FILE}
 }
 
 # Main execution
@@ -283,7 +309,7 @@ max_rows=$(( ${#LIST1[@]} > ${#LIST2[@]} ? ${#LIST1[@]} : ${#LIST2[@]} ))
 # Process servers in pairs
 for ((i=0; i<max_rows; i++)); do
     start_outer_row
-
+    
     # Left column server (LIST1)
     if ((i < ${#LIST1[@]})); then
         generate_server_table_header "${LIST1[i]}"
@@ -293,7 +319,7 @@ for ((i=0; i<max_rows; i++)); do
         # Empty cell if no more left servers
         echo "<td class=\"outer-td\"></td>" >> ${HTML_REPORT}
     fi
-
+    
     # Right column server (LIST2)
     if ((i < ${#LIST2[@]})); then
         generate_server_table_header "${LIST2[i]}"
@@ -303,7 +329,7 @@ for ((i=0; i<max_rows; i++)); do
         # Empty cell if no more right servers
         echo "<td class=\"outer-td\"></td>" >> ${HTML_REPORT}
     fi
-
+    
     end_outer_row
 done
 
@@ -319,11 +345,3 @@ find ${RBA_FILE} -mtime +2 -delete 2>/dev/null
 
 # Set appropriate permissions for web server
 chmod 644 ${HTML_REPORT}
-
-(
-echo "To: "${MAILTO}
-echo "Subject: PT GG: Status"
-echo "Content-Type: text/html"
-cat ${HTML_REPORT}
-echo
-) | /usr/sbin/sendmail -t
