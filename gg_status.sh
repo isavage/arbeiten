@@ -156,23 +156,21 @@ EOF
         
         echo \"Using OGG_HOME: \$OGG_HOME\"
         echo \"\$status_output\"
-    " | while IFS= read -r line; do
+     " | while IFS= read -r line; do
         if [[ $line =~ ^Error: ]]; then
-            # Write error message to HTML
             echo "<tr class=\"status-red\">" >> ${HTML_REPORT}
             echo "<td>${server}</td>" >> ${HTML_REPORT}
             echo "<td colspan=\"5\">$line</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
             continue
         fi
-
-         if [[ $line =~ ^Using ]]; then
-            # Log the OGG_HOME path but don't include in HTML
+        
+        if [[ $line =~ ^Using ]]; then
             echo "$line" >&2
             continue
         fi
         
-       # Process only EXTRACT and REPLICAT lines
+        # Process only EXTRACT and REPLICAT lines
         if [[ $line =~ ^(EXTRACT|REPLICAT) ]]; then
             process_type=$(echo "$line" | awk '{print $1}')
             status=$(echo "$line" | awk '{print $2}')
@@ -204,13 +202,17 @@ EOF
                 status_class="status-orange"
             fi
             
+            # Set default values without quotes
+            : ${lag:=00:00:00}
+            : ${checkpoint_lag:=00:00:00}
+            
             # Write to HTML
             echo "<tr class=\"${status_class}\">" >> ${HTML_REPORT}
             echo "<td>${server}</td>" >> ${HTML_REPORT}
             echo "<td>${process_name}</td>" >> ${HTML_REPORT}
             echo "<td>${status}</td>" >> ${HTML_REPORT}
-            echo "<td>${lag:-'00:00:00'}</td>" >> ${HTML_REPORT}
-            echo "<td>${checkpoint_lag:-'00:00:00'}</td>" >> ${HTML_REPORT}
+            echo "<td>${lag}</td>" >> ${HTML_REPORT}
+            echo "<td>${checkpoint_lag}</td>" >> ${HTML_REPORT}
             echo "<td>${rba_status}</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
         fi
