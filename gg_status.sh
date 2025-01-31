@@ -50,21 +50,24 @@ generate_html_header() {
         }
         .server-table th, .server-table td {
             border: 1px solid #ddd;
-            padding: 2px 4px;
+            padding: 3px 4px;
             text-align: left;
-            height: 16px;
+            line-height: 1;
+            vertical-align: middle;
+            height: auto;
             white-space: nowrap;
         }
         .server-table th {
             background-color: #000000;
             color: white;
-            height: 18px;
         }
         .server-header {
-            background-color: #4a4a4a;
-            color: white;
+            background-color: white;
+            color: black;
             font-weight: bold;
-            padding: 2px 4px;
+            text-align: center;
+            padding: 3px 4px;
+            border-bottom: 2px solid #ddd;
         }
         .status-red {
             color: #ff0000;
