@@ -13,14 +13,24 @@ RBA_FILE="/tmp/gg_rba_values.txt"
 # HTML report location
 HTML_REPORT="/var/www/html/gg_status.html"
 
-# Function to extract lag value
+# Function to extract lag value (Lag at Chkpt)
 get_lag_value() {
-    echo "$1" | awk -F'LAG' '{print $2}' | awk -F',' '{print $1}' | awk '{print $1}'
+    local line="$1"
+    echo "$line" | awk '{
+        if (NF >= 5) {
+            print $4
+        }
+    }'
 }
 
-# Function to extract checkpoint lag value
+# Function to extract time since checkpoint
 get_checkpoint_lag() {
-    echo "$1" | awk -F'CHKPT' '{print $2}' | awk -F',' '{print $1}' | awk '{print $1}'
+    local line="$1"
+    echo "$line" | awk '{
+        if (NF >= 6) {
+            print $5
+        }
+    }'
 }
 
 # Function to generate HTML header
@@ -162,31 +172,35 @@ EOF
             continue
         fi
         
-       if [[ $line =~ EXTRACT|REPLICAT ]]; then
-            process_name=$(echo "$line" | awk '{print $2}')
-            status=$(echo "$line" | awk '{print $3}')
-            
-            # Extract lag values using the new functions
+       # Process only EXTRACT and REPLICAT lines
+        if [[ $line =~ ^(EXTRACT|REPLICAT) ]]; then
+            process_type=$(echo "$line" | awk '{print $1}')
+            status=$(echo "$line" | awk '{print $2}')
+            process_name=$(echo "$line" | awk '{print $3}')
             lag=$(get_lag_value "$line")
             checkpoint_lag=$(get_checkpoint_lag "$line")
+            
+            # Convert lag to minutes for comparison (format is HH:MM:SS)
+            lag_minutes=0
+            if [[ $lag =~ ([0-9]+):([0-9]+):([0-9]+) ]]; then
+                hours=${BASH_REMATCH[1]}
+                minutes=${BASH_REMATCH[2]}
+                seconds=${BASH_REMATCH[3]}
+                lag_minutes=$((hours * 60 + minutes + (seconds >= 30 ? 1 : 0)))
+            fi
+            
+            # Determine status color
+            status_class="status-green"
+            if [[ "$status" != "RUNNING" ]]; then
+                status_class="status-red"
+            elif [[ $lag_minutes -gt 10 || "$rba_status" == "Not Moving" ]]; then
+                status_class="status-orange"
+            fi
             
             # Calculate RBA movement
             rba_status="Moving"
             if [[ ! -z "$prev_rba" && "$current_rba" == "$prev_rba" ]]; then
                 rba_status="Not Moving"
-            fi
-            
-            # Convert lag to minutes if it's numeric
-            lag_minutes=0
-            if [[ $lag =~ ^[0-9]+$ ]]; then
-                lag_minutes=$lag
-            fi
-            
-            # Determine status color
-            status_class="status-green"
-            if [[ "$status" == "ABENDED" || "$status" == "STOPPED" ]]; then
-                status_class="status-red"
-            elif [[ $lag_minutes -gt 600 || "$rba_status" == "Not Moving" ]]; then
                 status_class="status-orange"
             fi
             
@@ -195,8 +209,8 @@ EOF
             echo "<td>${server}</td>" >> ${HTML_REPORT}
             echo "<td>${process_name}</td>" >> ${HTML_REPORT}
             echo "<td>${status}</td>" >> ${HTML_REPORT}
-            echo "<td>${lag}</td>" >> ${HTML_REPORT}
-            echo "<td>${checkpoint_lag}</td>" >> ${HTML_REPORT}
+            echo "<td>${lag:-'00:00:00'}</td>" >> ${HTML_REPORT}
+            echo "<td>${checkpoint_lag:-'00:00:00'}</td>" >> ${HTML_REPORT}
             echo "<td>${rba_status}</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
         fi
