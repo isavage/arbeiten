@@ -152,11 +152,13 @@ EOF
             continue
         fi
         
-        if [[ $line =~ EXTRACT|REPLICAT ]]; then
-            process_name=$(echo $line | awk '{print $2}')
-            status=$(echo $line | awk '{print $3}')
-            lag=$(echo $line | grep -oP 'LAG.*?,' | cut -d' ' -f2)
-            checkpoint_lag=$(echo $line | grep -oP 'CHKPT.*?,' | cut -d' ' -f2)
+       if [[ $line =~ EXTRACT|REPLICAT ]]; then
+            process_name=$(echo "$line" | awk '{print $2}')
+            status=$(echo "$line" | awk '{print $3}')
+            
+            # Extract lag values using the new functions
+            lag=$(get_lag_value "$line")
+            checkpoint_lag=$(get_checkpoint_lag "$line")
             
             # Calculate RBA movement
             rba_status="Moving"
@@ -164,11 +166,17 @@ EOF
                 rba_status="Not Moving"
             fi
             
+            # Convert lag to minutes if it's numeric
+            lag_minutes=0
+            if [[ $lag =~ ^[0-9]+$ ]]; then
+                lag_minutes=$lag
+            fi
+            
             # Determine status color
             status_class="status-green"
             if [[ "$status" == "ABENDED" || "$status" == "STOPPED" ]]; then
                 status_class="status-red"
-            elif [[ "$lag" =~ ^[0-9]+$ && "$lag" -gt 600 || "$rba_status" == "Not Moving" ]]; then
+            elif [[ $lag_minutes -gt 600 || "$rba_status" == "Not Moving" ]]; then
                 status_class="status-orange"
             fi
             
