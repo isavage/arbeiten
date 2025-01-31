@@ -1,5 +1,7 @@
 #!/bin/bash
 
+MAILTO=
+
 # Two separate server lists
 LIST1=(
     "server1"
@@ -345,3 +347,11 @@ find ${RBA_FILE} -mtime +2 -delete 2>/dev/null
 
 # Set appropriate permissions for web server
 chmod 644 ${HTML_REPORT}
+
+(
+echo "To: "${MAILTO}
+echo "Subject: PT GG: Status"
+echo "Content-Type: text/html"
+cat ${HTML_REPORT}
+echo
+) | /usr/sbin/sendmail -t
