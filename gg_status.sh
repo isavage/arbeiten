@@ -81,13 +81,37 @@ check_gg_status() {
     fi
 
     # SSH to server and execute commands
-    ssh oracle@${server} "
-        # Source profile to get OGG_HOME
-        source ~/.bash_profile
+   ssh oracle@${server} "
+        # Try to source profile files in order of preference
+        if [ -f ~/.bash_profile ]; then
+            . ~/.bash_profile
+        elif [ -f ~/.profile ]; then
+            . ~/.profile
+        elif [ -f ~/.bashrc ]; then
+            . ~/.bashrc
+        fi
         
-        # Verify OGG_HOME exists
+        # If OGG_HOME is not set, try to find it
         if [ -z \"\$OGG_HOME\" ]; then
-            echo \"Error: OGG_HOME not set on ${server}\"
+            # Common GoldenGate installation paths
+            possible_paths=(
+                \"/oracle/app/goldengate\"
+                \"/oracle/goldengate\"
+                \"/u01/app/goldengate\"
+                \"/home/oracle/goldengate\"
+            )
+            
+            for path in \"\${possible_paths[@]}\"; do
+                if [ -d \"\$path\" ] && [ -f \"\$path/ggsci\" ]; then
+                    OGG_HOME=\"\$path\"
+                    break
+                fi
+            done
+        fi
+        
+        # Verify OGG_HOME exists and is valid
+        if [ -z \"\$OGG_HOME\" ] || [ ! -f \"\$OGG_HOME/ggsci\" ]; then
+            echo \"Error: Cannot find valid OGG_HOME on ${server}\"
             exit 1
         fi
         
@@ -110,6 +134,7 @@ EOF
         
         echo \"\$timestamp|\$server|\$current_rba\" >> ${RBA_FILE}
         
+        echo \"Using OGG_HOME: \$OGG_HOME\"
         echo \"\$status_output\"
     " | while IFS= read -r line; do
         if [[ $line =~ ^Error: ]]; then
@@ -118,6 +143,12 @@ EOF
             echo "<td>${server}</td>" >> ${HTML_REPORT}
             echo "<td colspan=\"5\">$line</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
+            continue
+        fi
+
+         if [[ $line =~ ^Using ]]; then
+            # Log the OGG_HOME path but don't include in HTML
+            echo "$line" >&2
             continue
         fi
         
