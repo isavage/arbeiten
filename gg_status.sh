@@ -1,10 +1,16 @@
 #!/bin/bash
 
-# List of servers to monitor
-SERVERS=(
+# Two separate server lists
+LIST1=(
     "server1"
     "server2"
     "server3"
+)
+
+LIST2=(
+    "server4"
+    "server5"
+    "server6"
 )
 
 # File to store previous RBA values
@@ -12,26 +18,6 @@ RBA_FILE="/tmp/gg_rba_values.txt"
 
 # HTML report location
 HTML_REPORT="/var/www/html/gg_status.html"
-
-# Function to extract lag value (Lag at Chkpt)
-get_lag_value() {
-    local line="$1"
-    echo "$line" | awk '{
-        if (NF >= 5) {
-            print $4
-        }
-    }'
-}
-
-# Function to extract time since checkpoint
-get_checkpoint_lag() {
-    local line="$1"
-    echo "$line" | awk '{
-        if (NF >= 6) {
-            print $5
-        }
-    }'
-}
 
 # Function to generate HTML header
 generate_html_header() {
@@ -41,23 +27,43 @@ generate_html_header() {
 <head>
     <title>GoldenGate Status Report</title>
     <style>
-        table {
-            border-collapse: collapse;
+        body {
+            margin: 0;
+            padding: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+        .outer-table {
             width: 100%;
-            margin: 20px 0;
+            border-collapse: collapse;
         }
-        th, td {
+        .outer-td {
+            width: 50%;
+            vertical-align: top;
+            padding: 5px;
+        }
+        .server-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        .server-table th, .server-table td {
             border: 1px solid #ddd;
-            padding: 4px 8px;  /* Reduced padding to minimize row height */
+            padding: 2px 4px;
             text-align: left;
-            line-height: 1.2;  /* Reduced line height */
+            height: 16px;
+            white-space: nowrap;
         }
-        th {
+        .server-table th {
             background-color: #000000;
             color: white;
+            height: 18px;
         }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
+        .server-header {
+            background-color: #4a4a4a;
+            color: white;
+            font-weight: bold;
+            padding: 2px 4px;
         }
         .status-red {
             color: #ff0000;
@@ -73,13 +79,14 @@ generate_html_header() {
         }
         .header {
             text-align: center;
-            padding: 10px;
+            padding: 5px;
+            margin-bottom: 10px;
         }
-        .server-header {
-            background-color: #4a4a4a;
-            color: white;
-            font-weight: bold;
-            text-align: left;
+        .header h2 {
+            margin: 0 0 5px 0;
+        }
+        .header p {
+            margin: 0;
         }
     </style>
 </head>
@@ -88,58 +95,80 @@ generate_html_header() {
         <h2>GoldenGate Status Report</h2>
         <p>Last Updated: $(date '+%Y-%m-%d %H:%M:%S')</p>
     </div>
-    <table>
-        <tr>
-            <th>Process Name</th>
-            <th>Status</th>
-            <th>Lag</th>
-            <th>Checkpoint Lag</th>
-            <th>RBA Movement</th>
-        </tr>
+    <table class="outer-table">
 EOF
+}
+
+# Function to start a new row in the outer table
+start_outer_row() {
+    echo "<tr>" >> ${HTML_REPORT}
+}
+
+# Function to end a row in the outer table
+end_outer_row() {
+    echo "</tr>" >> ${HTML_REPORT}
+}
+
+# Function to generate server table header
+generate_server_table_header() {
+    local server=$1
+    cat >> ${HTML_REPORT} << EOF
+<td class="outer-td">
+<table class="server-table">
+    <tr><td colspan="5" class="server-header">$server</td></tr>
+    <tr>
+        <th>Process</th>
+        <th>Status</th>
+        <th>Lag</th>
+        <th>Chkpt Lag</th>
+        <th>RBA</th>
+    </tr>
+EOF
+}
+
+# Function to end server table
+end_server_table() {
+    echo "</table></td>" >> ${HTML_REPORT}
+}
+
+# Function to extract lag value
+get_lag_value() {
+    local line="$1"
+    echo "$line" | awk '{
+        if (NF >= 5) {
+            print $4
+        }
+    }'
+}
+
+# Function to extract checkpoint lag
+get_checkpoint_lag() {
+    local line="$1"
+    echo "$line" | awk '{
+        if (NF >= 6) {
+            print $5
+        }
+    }'
 }
 
 # Function to check GoldenGate status and generate HTML
 check_gg_status() {
     local server=$1
-    local first_process=true
     
     # Get previous RBA values
     local prev_rba=""
     if [ -f ${RBA_FILE} ]; then
         prev_rba=$(grep "|${server}|" ${RBA_FILE} | tail -n 1)
     fi
-    
-    # Add server header before processing the server's entries
-    echo "<tr><td colspan=\"5\" class=\"server-header\">${server}</td></tr>" >> ${HTML_REPORT}
 
-    # SSH to server and execute commands
-   ssh oracle@${server} "
-        # Try to source profile files in order of preference
+    ssh oracle@${server} "
+        # Source profile to get OGG_HOME
         if [ -f ~/.bash_profile ]; then
             . ~/.bash_profile
         elif [ -f ~/.profile ]; then
             . ~/.profile
         elif [ -f ~/.bashrc ]; then
             . ~/.bashrc
-        fi
-        
-        # If OGG_HOME is not set, try to find it
-        if [ -z \"\$OGG_HOME\" ]; then
-            # Common GoldenGate installation paths
-            possible_paths=(
-                \"/oracle/app/goldengate\"
-                \"/oracle/goldengate\"
-                \"/u01/app/goldengate\"
-                \"/home/oracle/goldengate\"
-            )
-            
-            for path in \"\${possible_paths[@]}\"; do
-                if [ -d \"\$path\" ] && [ -f \"\$path/ggsci\" ]; then
-                    OGG_HOME=\"\$path\"
-                    break
-                fi
-            done
         fi
         
         # Verify OGG_HOME exists and is valid
@@ -153,9 +182,9 @@ check_gg_status() {
         # Get current timestamp
         timestamp=\$(date '+%Y-%m-%d %H:%M:%S')
         
-        # Get detailed status
+        # Get status
         status_output=\$(./ggsci << EOF
-        info all detail
+        info all
 EOF
         )
         
@@ -167,18 +196,12 @@ EOF
         
         echo \"\$timestamp|\$server|\$current_rba\" >> ${RBA_FILE}
         
-        echo \"Using OGG_HOME: \$OGG_HOME\"
         echo \"\$status_output\"
-   " | while IFS= read -r line; do
+    " | while IFS= read -r line; do
         if [[ $line =~ ^Error: ]]; then
             echo "<tr>" >> ${HTML_REPORT}
             echo "<td colspan=\"5\" class=\"status-red\">$line</td>" >> ${HTML_REPORT}
             echo "</tr>" >> ${HTML_REPORT}
-            continue
-        fi
-        
-        if [[ $line =~ ^Using ]]; then
-            echo "$line" >&2
             continue
         fi
         
@@ -230,24 +253,45 @@ EOF
     done
 }
 
+# Main execution
+generate_html_header
+
+# Calculate the maximum number of rows needed
+max_rows=$(( ${#LIST1[@]} > ${#LIST2[@]} ? ${#LIST1[@]} : ${#LIST2[@]} ))
+
+# Process servers in pairs
+for ((i=0; i<max_rows; i++)); do
+    start_outer_row
+    
+    # Left column server (LIST1)
+    if ((i < ${#LIST1[@]})); then
+        generate_server_table_header "${LIST1[i]}"
+        check_gg_status "${LIST1[i]}"
+        end_server_table
+    else
+        # Empty cell if no more left servers
+        echo "<td class=\"outer-td\"></td>" >> ${HTML_REPORT}
+    fi
+    
+    # Right column server (LIST2)
+    if ((i < ${#LIST2[@]})); then
+        generate_server_table_header "${LIST2[i]}"
+        check_gg_status "${LIST2[i]}"
+        end_server_table
+    else
+        # Empty cell if no more right servers
+        echo "<td class=\"outer-td\"></td>" >> ${HTML_REPORT}
+    fi
+    
+    end_outer_row
+done
+
 # Generate HTML footer
-generate_html_footer() {
-    cat >> ${HTML_REPORT} << EOF
+cat >> ${HTML_REPORT} << EOF
     </table>
 </body>
 </html>
 EOF
-}
-
-# Main execution
-generate_html_header
-
-# Check each server
-for server in "${SERVERS[@]}"; do
-    check_gg_status "$server"
-done
-
-generate_html_footer
 
 # Cleanup old RBA values (keep last 48 hours)
 find ${RBA_FILE} -mtime +2 -delete 2>/dev/null
