@@ -1,12 +1,13 @@
 import configparser
 import sys
 from google.cloud import spanner
+from google.oauth2 import service_account
 import pandas as pd
 
 # Hardcoded arguments
 CONFIG_FILE = "config/config.ini"
-QUERY = "SELECT * FROM your_table LIMIT 10"
-OUTPUT_FILE = "output/output.csv"
+QUERY = "SELECT * FROM your_table LIMIT 10"  # Replace with your table
+OUTPUT_FILE = "output/spanner_output.csv"
 OUTPUT_FORMAT = "csv"  # Options: "csv" or "html"
 
 def read_config(config_file):
@@ -18,7 +19,8 @@ def read_config(config_file):
     return {
         'project_id': config['Spanner'].get('project_id'),
         'instance_id': config['Spanner'].get('instance_id'),
-        'database_id': config['Spanner'].get('database_id')
+        'database_id': config['Spanner'].get('database_id'),
+        'service_account_file': config['Spanner'].get('service_account_file')
     }
 
 def query_spanner():
@@ -26,23 +28,26 @@ def query_spanner():
         # Read configuration
         config = read_config(CONFIG_FILE)
 
-        # Initialize Spanner client
-        client = spanner.Client(project=config['project_id'])
+        # Load service account credentials
+        credentials = service_account.Credentials.from_service_account_file(
+            config['service_account_file']
+        )
+
+        # Initialize Spanner client with explicit credentials
+        client = spanner.Client(project=config['project_id'], credentials=credentials)
         instance = client.instance(config['instance_id'])
         database = instance.database(config['database_id'])
 
         # Execute query
         with database.snapshot() as snapshot:
             results = snapshot.execute_sql(QUERY)
-            # Fetch column names
             columns = [field.name for field in results.fields]
-            # Fetch rows
             rows = [row for row in results]
 
-        # Convert to DataFrame for easier handling
+        # Convert to DataFrame
         df = pd.DataFrame(rows, columns=columns)
 
-        # Save output based on format
+        # Save output
         if OUTPUT_FORMAT.lower() == 'csv':
             df.to_csv(OUTPUT_FILE, index=False)
             print(f"Results saved to {OUTPUT_FILE} as CSV")
