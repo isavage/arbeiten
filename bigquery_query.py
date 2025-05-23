@@ -3,12 +3,13 @@ import sys
 from google.cloud import bigquery
 from google.oauth2 import service_account
 import pandas as pd
+from tabulate import tabulate
 
 # Hardcoded arguments
-CONFIG_FILE = "config/config.ini"
+CONFIG_FILE = "../config/config.ini"
 QUERY = "SELECT * FROM your_dataset.your_table LIMIT 10"  # Replace with your dataset and table
-OUTPUT_FILE = "output/bigquery_output.csv"
-OUTPUT_FORMAT = "csv"  # Options: "csv" or "html"
+OUTPUT_FILE = "../output/bigquery_output.txt"
+OUTPUT_FORMAT = "txt"  # Options: "csv", "html", or "txt"
 
 def read_config(config_file):
     """Read connection details from a .ini config file."""
@@ -31,7 +32,7 @@ def query_bigquery():
             config['service_account_file']
         )
 
-        # Initialize BigQuery client with explicit credentials
+        # Initialize BigQuery client
         client = bigquery.Client(project=config['project_id'], credentials=credentials)
 
         # Execute query
@@ -48,8 +49,12 @@ def query_bigquery():
         elif OUTPUT_FORMAT.lower() == 'html':
             df.to_html(OUTPUT_FILE, index=False, border=1, classes='table table-striped')
             print(f"Results saved to {OUTPUT_FILE} as HTML")
+        elif OUTPUT_FORMAT.lower() == 'txt':
+            with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+                f.write(tabulate(df, headers='keys', tablefmt='plain', showindex=False))
+            print(f"Results saved to {OUTPUT_FILE} as formatted text")
         else:
-            raise ValueError("Unsupported output format. Use 'csv' or 'html'.")
+            raise ValueError("Unsupported output format. Use 'csv', 'html', or 'txt'.")
 
     except Exception as e:
         print(f"Error executing BigQuery query: {e}")
