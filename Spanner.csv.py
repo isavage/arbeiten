@@ -111,8 +111,11 @@ def execute_select_statements(database, sql_statements):
             with database.snapshot() as snapshot:
                 results = snapshot.execute_sql(stmt)
                 
-                # Convert results to a list to allow multiple iterations
-                result_rows = [dict(zip(results.fields, row)) for row in results]
+                # Get column names from fields
+                column_names = [field.name for field in results.fields]
+                
+                # Convert results to a list of dictionaries
+                result_rows = [dict(zip(column_names, row)) for row in results]
                 
                 # Check if the query has results
                 if result_rows:
