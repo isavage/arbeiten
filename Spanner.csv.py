@@ -111,6 +111,15 @@ def execute_select_statements(database, sql_statements):
             with database.snapshot() as snapshot:
                 try:
                     results = snapshot.execute_sql(stmt)
+                except exceptions.InvalidArgument as e:
+                    logger.error(f"Invalid query syntax or arguments for statement {idx}: {e}")
+                    continue
+                except exceptions.NotFound as e:
+                    logger.error(f"Table or resource not found for statement {idx}: {e}")
+                    continue
+                except exceptions.PermissionDenied as e:
+                    logger.error(f"Permission denied for statement {idx}: {e}")
+                    continue
                 except exceptions.GoogleAPIError as e:
                     logger.error(f"Query execution failed for statement {idx}: {e}")
                     continue
@@ -120,11 +129,18 @@ def execute_select_statements(database, sql_statements):
                     continue
                 
                 # Get column names from metadata.row_type.fields
+                column_names = []
                 try:
-                    if not hasattr(results, 'metadata') or not hasattr(results.metadata, 'row_type'):
-                        logger.error(f"Statement {idx}: Results metadata or row_type missing")
+                    if not hasattr(results, 'metadata'):
+                        logger.error(f"Statement {idx}: Results metadata missing")
+                        continue
+                    if not hasattr(results.metadata, 'row_type'):
+                        logger.error(f"Statement {idx}: Results row_type missing")
                         continue
                     column_names = [field.name for field in results.metadata.row_type.fields]
+                    if not column_names:
+                        logger.error(f"Statement {idx}: No column names found in metadata")
+                        continue
                 except Exception as e:
                     logger.error(f"Failed to extract column names for statement {idx}: {e}")
                     continue
