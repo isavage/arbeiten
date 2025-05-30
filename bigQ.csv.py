@@ -88,7 +88,7 @@ def send_email(csv_files, recipient, sender, subject):
         mail_cmd.append(recipient)
         
         # Send email with body piped in
-        process = subprocess.Popen(mail_cmd, stdin=subprocess.PIPE, text=True)
+        process = subprocess.Popen(mail_cmd, stdin=subprocess.PIPE, universal_newlines=True)
         process.communicate(input=body)
         
         if process.returncode == 0:
