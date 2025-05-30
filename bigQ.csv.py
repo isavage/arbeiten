@@ -10,6 +10,7 @@ from datetime import datetime
 # Configuration variables
 CONFIG_FILE_PATH = 'config.ini'  # Path to the config file
 SQL_FILE_PATH = '/path/to/your/select_statements.sql'  # Path to the SQL file
+OUTPUT_DIR = '/home/user/project/output'  # Directory for CSV files
 EMAIL_RECIPIENT = 'recipient@example.com'  # Email recipient
 EMAIL_SENDER = 'sender@example.com'  # Email sender (set to '' to omit -r)
 EMAIL_SUBJECT = 'BigQuery SELECT Results'  # Email subject
@@ -46,7 +47,7 @@ def read_sql_file(file_path):
         raise
 
 def save_to_csv(results, query_index):
-    """Save query results to a CSV file."""
+    """Save query results to a CSV file with date in filename."""
     try:
         # Convert results to a list of dictionaries
         rows = [dict(row.items()) for row in results]
@@ -56,7 +57,9 @@ def save_to_csv(results, query_index):
         
         # Create DataFrame and save to CSV
         df = pd.DataFrame(rows)
-        csv_filename = f"query_result_{query_index}.csv"
+        os.makedirs(OUTPUT_DIR, exist_ok=True)  # Create directory if it doesn't exist
+        timestamp = datetime.now().strftime('%Y%m%d')  # Format: YYYYMMDD
+        csv_filename = os.path.join(OUTPUT_DIR, f"query_result_{query_index}_{timestamp}.csv")
         df.to_csv(csv_filename, index=False)
         logger.info(f"Saved results to {csv_filename}")
         return csv_filename
@@ -131,6 +134,9 @@ def execute_select_statements(client, sql_statements):
 
 def main():
     try:
+        # Log current working directory
+        logger.info(f"Current working directory: {os.getcwd()}")
+        
         # Load configuration
         config = load_config(CONFIG_FILE_PATH)
         
