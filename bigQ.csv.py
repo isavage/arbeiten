@@ -46,19 +46,17 @@ def read_sql_file(file_path):
         logger.error(f"Error reading SQL file {file_path}: {e}")
         raise
 
-def save_to_csv(results, query_index):
+def save_to_csv(result_rows, query_index):
     """Save query results to a CSV file with date in filename."""
     try:
-        # Convert results to a list of dictionaries
-        rows = [dict(row.items()) for row in results]
-        if not rows:
+        if not result_rows:
             logger.info("No rows to save to CSV")
             return None
         
         # Create DataFrame and save to CSV
-        df = pd.DataFrame(rows)
+        df = pd.DataFrame(result_rows)
         os.makedirs(OUTPUT_DIR, exist_ok=True)  # Create directory if it doesn't exist
-        timestamp = datetime.now().strftime('%Y%m%d')  # Format: YYYYMMDD
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')  # Format: YYYYMMDD_HHMMSS
         csv_filename = os.path.join(OUTPUT_DIR, f"query_result_{query_index}_{timestamp}.csv")
         df.to_csv(csv_filename, index=False)
         logger.info(f"Saved results to {csv_filename}")
@@ -102,7 +100,7 @@ def send_email(csv_files, recipient, sender, subject):
         raise
 
 def execute_select_statements(client, sql_statements):
-    """Execute SELECT statements in BigQuery, save to CSV, and print results."""
+    """Execute SQL statements in BigQuery, save to CSV, and print results."""
     csv_files = []
     for idx, stmt in enumerate(sql_statements, 1):
         try:
@@ -110,20 +108,22 @@ def execute_select_statements(client, sql_statements):
             query_job = client.query(stmt)
             results = query_job.result()  # Wait for the query to complete
             
-            # Check if the query is SELECT and has results
-            if query_job.query_type == 'SELECT' and results.total_rows > 0:
+            # Convert results to a list to allow multiple iterations
+            result_rows = [dict(row.items()) for row in results]
+            
+            # Check if the query has results
+            if result_rows:
                 logger.info("Query results:")
                 # Print results to console
-                for row in results:
-                    row_dict = dict(row.items())
+                for row_dict in result_rows:
                     print(row_dict)
                 
                 # Save results to CSV
-                csv_file = save_to_csv(results, idx)
+                csv_file = save_to_csv(result_rows, idx)
                 if csv_file:
                     csv_files.append(csv_file)
             else:
-                logger.info("No results to display (non-SELECT statement or empty result set)")
+                logger.info("No results to display (empty result set or non-SELECT statement)")
                 
             logger.info(f"Statement {idx} executed successfully")
         except exceptions.GoogleAPIError as e:
