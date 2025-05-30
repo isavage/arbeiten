@@ -101,12 +101,60 @@ def send_email(csv_files, recipient, sender, subject):
         logger.error(f"Error sending email: {e}")
         raise
 
+def get_table_columns(database, table_name):
+    """Fetch column names from information_schema for the given table."""
+    try:
+        with database.snapshot() as snapshot:
+            query = """
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = @table_name AND table_schema = ''
+                ORDER BY ordinal_position
+            """
+            params = {"table_name": table_name}
+            param_types = {"table_name": spanner.param_types.STRING}
+            results = snapshot.execute_sql(query, params=params, param_types=param_types)
+            
+            column_names = [row[0] for row in results]
+            if not column_names:
+                logger.error(f"No columns found for table {table_name}")
+                return None
+            return column_names
+    except Exception as e:
+        logger.error(f"Failed to fetch columns for table {table_name}: {e}")
+        return None
+
+def extract_table_name(sql):
+    """Extract the table name from a SELECT query."""
+    sql = sql.strip().upper()
+    if not sql.startswith("SELECT"):
+        return None
+    tokens = sql.split()
+    try:
+        from_index = tokens.index("FROM")
+        if from_index + 1 < len(tokens):
+            return tokens[from_index + 1].strip(';"')
+    except ValueError:
+        pass
+    return None
+
 def execute_select_statements(database, sql_statements):
     """Execute SQL statements in Spanner, save to CSV, and print results."""
     csv_files = []
     for idx, stmt in enumerate(sql_statements, 1):
         try:
             logger.info(f"Executing statement {idx}: {stmt[:100]}...")
+            # Extract table name to get columns from information_schema
+            table_name = extract_table_name(stmt)
+            if not table_name:
+                logger.error(f"Statement {idx}: Could not determine table name")
+                continue
+            
+            # Get column names from information_schema
+            column_names = get_table_columns(database, table_name)
+            if not column_names:
+                continue
+            
             # Execute read-only query using snapshot for consistency
             with database.snapshot() as snapshot:
                 try:
@@ -126,23 +174,6 @@ def execute_select_statements(database, sql_statements):
                 
                 if results is None:
                     logger.warning(f"Statement {idx} returned None (invalid query or unexpected result)")
-                    continue
-                
-                # Get column names from metadata.row_type.fields
-                column_names = []
-                try:
-                    if not hasattr(results, 'metadata'):
-                        logger.error(f"Statement {idx}: Results metadata missing")
-                        continue
-                    if not hasattr(results.metadata, 'row_type'):
-                        logger.error(f"Statement {idx}: Results row_type missing")
-                        continue
-                    column_names = [field.name for field in results.metadata.row_type.fields]
-                    if not column_names:
-                        logger.error(f"Statement {idx}: No column names found in metadata")
-                        continue
-                except Exception as e:
-                    logger.error(f"Failed to extract column names for statement {idx}: {e}")
                     continue
                 
                 # Convert results to a list of dictionaries
