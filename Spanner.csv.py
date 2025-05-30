@@ -106,16 +106,35 @@ def execute_select_statements(database, sql_statements):
     csv_files = []
     for idx, stmt in enumerate(sql_statements, 1):
         try:
-            logger.info(f"Executing statement {idx}: {stmt[:100]}...")  # Log first 100 chars
+            logger.info(f"Executing statement {idx}: {stmt[:100]}...")
             # Execute read-only query using snapshot for consistency
             with database.snapshot() as snapshot:
-                results = snapshot.execute_sql(stmt)
+                try:
+                    results = snapshot.execute_sql(stmt)
+                except exceptions.GoogleAPIError as e:
+                    logger.error(f"Query execution failed for statement {idx}: {e}")
+                    continue
                 
-                # Get column names from fields
-                column_names = [field.name for field in results.fields]
+                if results is None:
+                    logger.warning(f"Statement {idx} returned None (invalid query or unexpected result)")
+                    continue
+                
+                # Get column names from metadata.row_type.fields
+                try:
+                    if not hasattr(results, 'metadata') or not hasattr(results.metadata, 'row_type'):
+                        logger.error(f"Statement {idx}: Results metadata or row_type missing")
+                        continue
+                    column_names = [field.name for field in results.metadata.row_type.fields]
+                except Exception as e:
+                    logger.error(f"Failed to extract column names for statement {idx}: {e}")
+                    continue
                 
                 # Convert results to a list of dictionaries
-                result_rows = [dict(zip(column_names, row)) for row in results]
+                try:
+                    result_rows = [dict(zip(column_names, row)) for row in results]
+                except Exception as e:
+                    logger.error(f"Error processing result rows for statement {idx}: {e}")
+                    continue
                 
                 # Check if the query has results
                 if result_rows:
@@ -132,8 +151,8 @@ def execute_select_statements(database, sql_statements):
                     logger.info("No results to display (empty result set)")
                 
             logger.info(f"Statement {idx} executed successfully")
-        except exceptions.GoogleAPIError as e:
-            logger.error(f"Error executing statement {idx}: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error executing statement {idx}: {e}")
             raise
     
     return csv_files
