@@ -2,6 +2,7 @@ import configparser
 import csv
 import os
 import subprocess
+import logging
 from datetime import datetime
 from google.cloud import spanner
 from google.oauth2 import service_account
@@ -10,8 +11,15 @@ from google.oauth2 import service_account
 CONFIG_PATH = "../config/config.ini"
 SQL_FILE = "./Spanner.csv.sql"
 OUTPUT_DIR = "./output"
+EMAIL_RECIPIENT = 'recipient@example.com'  # Email recipient
+EMAIL_SENDER = 'sender@example.com'  # Email sender (set to '' to omit -r)
+EMAIL_SUBJECT = 'BigQuery SELECT Results'  # Email subject
 
 # === FUNCTIONS ===
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def read_config(path):
     config = configparser.ConfigParser()
@@ -63,23 +71,47 @@ def write_results_to_csvs(results):
     
     return csv_files
 
-def send_email_with_attachments(config, attachments):
-    recipient = config['email']['recipient']
-    subject = config['email']['subject']
-    sender = config['email']['from']
-
-    attachment_flags = ' '.join(f'-a "{file}"' for file in attachments)
-    cmd = f"""echo "Attached are the query results." | mailx -s "{subject}" -r "{sender}" {attachment_flags} "{recipient}" """
-    print(f"Sending email to {recipient}...")
-    subprocess.run(cmd, shell=True, check=True)
-
+def send_email(csv_files, recipient, sender, subject):
+    """Send email with CSV files as attachments using Linux mail command."""
+    try:
+        if not csv_files:
+            logger.info("No CSV files to send")
+            return
+        
+        # Prepare mail command with attachments
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        body = f"BigQuery SELECT query results generated at {timestamp}"
+        mail_cmd = ["mail", "-s", subject]
+        
+        # Add sender if specified
+        if sender:
+            mail_cmd.extend(["-r", sender])
+        
+        # Add attachments
+        for csv_file in csv_files:
+            mail_cmd.extend(["-a", csv_file])
+        
+        mail_cmd.append(recipient)
+        
+        # Send email with body piped in
+        process = subprocess.Popen(mail_cmd, stdin=subprocess.PIPE, universal_newlines=True)
+        process.communicate(input=body)
+        
+        if process.returncode == 0:
+            logger.info(f"Email sent successfully to {recipient}")
+        else:
+            raise RuntimeError("Failed to send email via mail command")
+    except Exception as e:
+        logger.error(f"Error sending email: {e}")
+        raise
+        
 def main():
     config = read_config(CONFIG_PATH)
     client = get_spanner_client(config)
     queries = read_sql_file(SQL_FILE)
     results = execute_queries(client, config, queries)
     csv_files = write_results_to_csvs(results)
-    send_email_with_attachments(config, csv_files)
+    send_email(csv_files, EMAIL_RECIPIENT, EMAIL_SENDER, EMAIL_SUBJECT)
 
 if __name__ == "__main__":
     main()
